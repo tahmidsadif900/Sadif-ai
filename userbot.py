@@ -57,6 +57,24 @@ hour_count = defaultdict(int)        # প্রতি চ্যাটে ঘণ
 hour_start = defaultdict(float)
 
 
+@client.on(events.NewMessage())
+async def remember_my_messages(event):
+    """আপনি নিজে যা লিখেন — বট সেটাও স্মৃতিতে রাখবে,
+    যাতে ফুল কথোপকথনের প্রসঙ্গ জানা থাকে। (কখনো থামায় না, শুধু মনে রাখে)"""
+    try:
+        if not event.out:
+            return
+        if ME_ID is not None and event.chat_id == ME_ID:
+            return  # Saved Messages বাদ
+        text = (event.raw_text or "").strip()
+        if not text or text.startswith("!"):
+            return  # কমান্ড বাদ
+        histories[event.chat_id].append({"role": "assistant", "content": text})
+        logger.info("📝 আপনার নিজের মেসেজ স্মৃতিতে রাখা হলো (চ্যাট %s)", event.chat_id)
+    except Exception:
+        pass
+
+
 @client.on(events.NewMessage(incoming=True))
 async def on_message(event):
     global ME_ID
