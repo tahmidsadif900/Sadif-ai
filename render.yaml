@@ -1,0 +1,21 @@
+# Render.com-এ ডিপ্লয় করার কনফিগ (ফ্রি প্ল্যান)
+# ইউজারবট মোডে চালাতে হলে: startCommand python userbot.py
+# বট মোডে চালাতে হলে: startCommand python bot.py করে WEBHOOK_URL দিন
+services:
+  - type: web
+    name: sadif-ai
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python userbot.py
+    envVars:
+      - key: API_ID
+        sync: false
+      - key: API_HASH
+        sync: false
+      - key: SESSION_STRING
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile

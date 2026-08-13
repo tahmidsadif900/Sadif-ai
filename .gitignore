@@ -1,0 +1,8 @@
+.env
+*.session
+otp.txt
+session_string.txt
+render-keys.txt
+__pycache__/
+*.pyc
+.venv/
