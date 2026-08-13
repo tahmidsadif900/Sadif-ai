@@ -129,22 +129,21 @@ async def on_message(event):
                 ai_engine.generate_reply, list(history), text
             )
     except Exception as e:
+        # ব্রেইন ব্যস্ত/লিমিট শেষ → চুপচাপ থাকবে, বন্ধুকে রোবোটিক এরর মেসেজ পাঠাবে না
         logger.error("AI error: %s", e)
-        await event.reply("উফ, একটু টেকনিক্যাল ঝামেলা হচ্ছে 😅 সাদিফ নিজে এসে উত্তর দেবে!")
         return
 
     # 🧑 মানুষের মতো: একটা লম্বা মেসেজ না — ২-৩টা ছোট মেসেজ পরপর
+    # কোট/রিপ্লাই-ট্যাগ ছাড়া সরাসরি মেসেজ পাঠাবে (মানুষ ফাস্ট চ্যাটে কোট করে না)
     parts = [p.strip() for p in reply.split("||") if p.strip()][:4] or [reply]
     history.append({"role": "user", "content": text})
     history.append({"role": "assistant", "content": " ".join(parts)})
 
     for i, part in enumerate(parts):
-        if i == 0:
-            await event.reply(part)
-        else:
+        if i > 0:
             async with client.action(event.chat_id, "typing"):
                 await asyncio.sleep(random.uniform(0.8, 2.0))
-            await client.send_message(event.chat_id, part)
+        await client.send_message(event.chat_id, part)
     last_reply_at[event.chat_id] = time.time()
     hour_count[event.chat_id] += 1
     logger.info("✉️ %s কে রিপ্লাই দেওয়া হলো", getattr(sender, "first_name", None) or sender.id)
