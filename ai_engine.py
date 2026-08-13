@@ -10,6 +10,7 @@ userbot.py ও bot.py — দুটোই এটা ব্যবহার কর
 """
 
 import os
+import re
 
 from dotenv import load_dotenv
 
@@ -17,7 +18,6 @@ load_dotenv()
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
-GROQ_FALLBACK_MODELS = ["openai/gpt-oss-20b", "llama-3.1-8b-instant"]  # লিমিট/সমস্যা হলে পরপর ট্রাই
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
@@ -78,6 +78,8 @@ RULES (always follow):
    "eta shune onk kharap laglo bro 💔"), then care for the friend ("tmar kosto ta ami
    bujhi", "sobsomoy tmar pase achi, kichu lagle bolish"). NEVER claim you (Sadif)
    knew the deceased unless the chat history shows it.
+10. Never repeat a question you already asked in this conversation — keep moving the
+    chat forward with new things (news, plans, reactions).
 
 SADIF'S STYLE PROFILE:
 --------------------
@@ -116,18 +118,31 @@ def generate_reply(chat_history: list, new_text: str) -> str:
             + [{"role": "user", "content": new_text}]
         )
         last_err = None
-        for model in [GROQ_MODEL] + GROQ_FALLBACK_MODELS:
-            # gpt-oss মডেলগুলো "ভেবে" লেখে — ভাবনার টোকেনও বাজেটে ধরে, তাই বেশি ক্যাপ দরকার
-            cap = 900 if "gpt-oss" in model else 300
+        # চেইন: মূল ব্রেইন → শক্তিশালী ফলব্যাক (qwen ভাবে, তাই বড় ক্যাপ + <think> স্ট্রিপ)
+        # → হালকা ব্যাকআপ → সর্বশেষ ছোট মডেল
+        chain = [
+            (GROQ_MODEL, 300, None),
+            ("qwen/qwen3.6-27b", 3000, None),
+            ("openai/gpt-oss-20b", 300, {"reasoning_effort": "low"}),
+            ("llama-3.1-8b-instant", 300, None),
+        ]
+        for model, cap, extra in chain:
             try:
-                resp = client.chat.completions.create(
+                kwargs = dict(
                     model=model,
                     messages=messages,
                     temperature=0.9,   # একটু স্বাভাবিক বৈচিত্র্যের জন্য
                     max_tokens=cap,
                 )
+                if extra:
+                    kwargs["extra_body"] = extra
+                resp = client.chat.completions.create(**kwargs)
                 content = (resp.choices[0].message.content or "").strip()
-                if content and "<think>" not in content:
+                # qwen-এর "ভাবনা" (<think>...</think>) বাদ দিই
+                content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+                if "<think>" in content:
+                    content = ""
+                if content:
                     return content
                 raise RuntimeError("খালি/থিংকিং আউটপুট এসেছে")
             except Exception as e:
