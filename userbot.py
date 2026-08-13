@@ -123,19 +123,28 @@ async def on_message(event):
 
     try:
         async with client.action(event.chat_id, "typing"):
-            await asyncio.sleep(random.uniform(1.5, 4.0))  # মানুষের মতো স্বাভাবিক বিরতি
+            await asyncio.sleep(random.uniform(1.5, 4.0))  # মানুষের মতো টাইপ করার বিরতি
             history = histories[event.chat_id]
             reply = await asyncio.to_thread(
                 ai_engine.generate_reply, list(history), text
             )
     except Exception as e:
         logger.error("AI error: %s", e)
-        reply = "উফ, একটু টেকনিক্যাল ঝামেলা হচ্ছে 😅 সাদিফ নিজে এসে উত্তর দেবে!"
-    else:
-        history.append({"role": "user", "content": text})
-        history.append({"role": "assistant", "content": reply})
+        await event.reply("উফ, একটু টেকনিক্যাল ঝামেলা হচ্ছে 😅 সাদিফ নিজে এসে উত্তর দেবে!")
+        return
 
-    await event.reply(reply)
+    # 🧑 মানুষের মতো: একটা লম্বা মেসেজ না — ২-৩টা ছোট মেসেজ পরপর
+    parts = [p.strip() for p in reply.split("||") if p.strip()][:4] or [reply]
+    history.append({"role": "user", "content": text})
+    history.append({"role": "assistant", "content": " ".join(parts)})
+
+    for i, part in enumerate(parts):
+        if i == 0:
+            await event.reply(part)
+        else:
+            async with client.action(event.chat_id, "typing"):
+                await asyncio.sleep(random.uniform(0.8, 2.0))
+            await client.send_message(event.chat_id, part)
     last_reply_at[event.chat_id] = time.time()
     hour_count[event.chat_id] += 1
     logger.info("✉️ %s কে রিপ্লাই দেওয়া হলো", getattr(sender, "first_name", None) or sender.id)
