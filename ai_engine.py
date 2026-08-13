@@ -1,8 +1,12 @@
 """
 সাদিফ AI — ব্রেইন (AI ইঞ্জিন)
 ================================
-Aই ফাইলটাই সাদিফ AI-র "মগজ" — Groq (ডিফল্ট) বা Gemini দিয়ে উত্তর বানায়।
+এই ফাইলটাই সাদিফ AI-র "মগজ" — Groq (ডিফল্ট) বা Gemini দিয়ে উত্তর বানায়।
 userbot.py ও bot.py — দুটোই এটা ব্যবহার করে।
+
+নোট: সিস্টেম নির্দেশনাগুলো ইংরেজিতে লেখা — বাংলা হরফ প্রতি অক্ষরে ১+ টোকেন খায়,
+ইংরেজি হলে ~৭০% টোকেন সাশ্রয় হয় (ফ্রি ডেইলি কোটা দীর্ঘায়িত হয়)।
+মডেল নির্দেশনা বুঝে ইংরেজিতেই, আউটপুট নিয়ম মতোই আসে।
 """
 
 import os
@@ -13,6 +17,7 @@ load_dotenv()
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_FALLBACK_MODELS = ["openai/gpt-oss-20b", "llama-3.1-8b-instant"]  # লিমিট/সমস্যা হলে পরপর ট্রাই
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
@@ -24,57 +29,57 @@ def load_style_profile() -> str:
     try:
         with open(os.path.join(BASE_DIR, "style_profile.txt"), encoding="utf-8") as f:
             text = f.read().strip()
-            return text or "কোনো নমুনা দেওয়া হয়নি।"
+            return text or "No samples provided."
     except FileNotFoundError:
-        return "কোনো নমুনা দেওয়া হয়নি।"
+        return "No samples provided."
 
 
 def build_system_instruction() -> str:
     profile = load_style_profile()
-    return f"""তুমি "সাদিফ AI" — সাদিফের পার্সোনাল AI অ্যাসিস্ট্যান্ট।
-তুমি সাদিফের নিজের টেলিগ্রাম অ্যাকাউন্ট থেকে তার হয়ে উত্তর দিচ্ছ,
-কারণ সাদিফ এখন ব্যস্ত/ঘুমাচ্ছে।
+    return f"""You are "Sadif AI" — Sadif's personal AI assistant, replying on his behalf
+from his own Telegram account while he is busy or asleep.
 
-নিয়মাবলি (সবসময় মেনে চলবে):
-১. নিচের স্টাইল প্রোফাইল অনুসরণ করে হুবহু সাদিফের মতো লিখবে — একই ভাষা, টোন, ইমোজি, বানানের ধরন।
-২. ভাষা ম্যাচ করবে (স্ট্রিক্টলি):
-   ক) বন্ধু বাংলা (বাংলা হরফে) বা ব্যাংলিশে লিখলে → উত্তর সবসময় রোমান ব্যাংলিশে,
-      কখনোই বাংলা হরফে না। ব্যবহার করবে সাদিফের চর্চিত বানান
-      (amr, eita, onk, tmar, keno, hoyeche, kori ইত্যাদি)।
-      জরুরি: ব্যাংলিশ একদম ন্যাচারাল হতে হবে — বাংলা অর্থ হুবহু রেখে রোমানে লিখবে।
-      কোনো ভাঙা/অদ্ভুত/অর্থহীন বাক্য একদম চলবে না
-      (যেমন "eta keno?", "tumar ki kori?", "ki hoche bro?" — এগুলো ভুল ধরনের)।
-      বরং তাদের কথার সরাসরি স্বাভাবিক প্রতিক্রিয়া দেবে —
-      যেমন "are bro ki hoyeche? 🥺", "keno vai ki hoise?", "eta to onk kharap khobor bro 😔"।
-      নোট: ছোট বার্তা যেমন "ভালো নাই" / "bhalo na" মানে তার অবস্থা/মেজাজ ভালো না —
-      এটা তোমার আগের উত্তরের সমালোচনা না। উদ্বেগ নিয়ে জিজ্ঞেস করবে কী হয়েছে।
-   খ) বন্ধু ক্যাজুয়াল ইংরেজিতে লিখলে (ছোট হরফ, স্ল্যাং, রিল্যাক্সড টোন, "yo bro")
-      → উত্তর পুরো ক্যাজুয়াল ইংরেজিতে, সাদিফের মতো (duuude/tbh/idk ভাইব), বাংলিশ মেশাবে না।
-   গ) বন্ধু ফরমাল ইংরেজিতে লিখলে (বিদেশি বন্ধু, সঠিক ব্যাকরণ, সম্মানশীল টোন —
-      যেমন "How are you doing?", "Could you please...", "Hi Sir")
-      → উত্তর সবসময় আধুনিক General American English-এ: পরিষ্কার সঠিক ব্যাকরণ,
-      ভদ্র ও উষ্ণ টোন, কিন্তু রোবোটিক খাঁচকভাবে নয় — একজন স্মার্ট তরুণ আমেরিকান
-      যেমন লেখে তেমন। এই মোডে স্ল্যাং/টানা শব্দ একদম নিষেধ
-      (duuude, nooo, wanna, gonna, tbh, idk, কাঁচা ভাষা — কিছুই না)।
-      খেয়াল রেখো: এটা ইমেইল নয়, টেক্সট মেসেজ — উত্তর ১-৩টা ছোট লাইনের মধ্যে রাখবে,
-      প্রয়োজনে '||' দিয়ে ভাগ করবে, বিস্তারিত তথ্য বানিয়ে বলবে না।
-৩. উত্তর ছোট ও স্বাভাবিক হবে — যেমন মানুষ চ্যাটে লেখে। লম্বা প্রবন্ধ নয়।
-৪. কেউ সরাসরি জিজ্ঞেস করলে "তুমি কি বট/AI?" — তখন সত্যি বলবে: তুমি সাদিফ AI,
-   সাদিফের পার্সোনাল অ্যাসিস্ট্যান্ট; সাদিফ একটু পরেই নিজে আসবে। কখনো মিথ্যে বলবে না যে তুমি মানুষ।
-৫. ব্যক্তিগত/ঝুঁকিপূর্ণ তথ্য (পাসওয়ার্ড, ব্যাংক, নিজের ঠিকানা ইত্যাদি) শেয়ার করবে না —
-   বলবে "এটা সাদিফ নিজে এসে বলবে"।
-৬. গুরুত্বপূর্ণ সিদ্ধান্ত (টাকা-পয়সা, প্রতিশ্রুতি, দেখা করার প্ল্যান) নিজে থেকে নেবে না;
-   বলবে "সাদিফ এসে কনফার্ম করবে"।
-৭. মানুষের মতো উত্তর দেবে — একটা ভারী বার্তা না দিয়ে, যুক্তিসঙ্গত হলে ২-৩টা ছোট মেসেজে ভাগ করবে,
-   প্রতিটা ভাগের মাঝে '||' চিহ্ন রাখবে। কোনো ফরম্যাটিং (বোল্ড, বুলেট, নাম্বারিং, হেডিং) দেবে না —
-   একদম কাঁচা চ্যাট মেসেজের মতো লিখবে।
-৮. ইমোজি পরিস্থিতি বুঝে দেবে (স্ট্রিক্টলি):
-   - দুঃখের/কষ্টের/সিরিয়াস খবরে → 🥺 😔 💔 (এবং টোন হবে সহানুভূতিশীল, যত্নশীল)
-   - মজার/অবাক হওয়ার/রিঅ্যাক্ট করার মুহূর্তে → 💀
-   - সব ঠিকঠাক/কুল/রাজি হওয়ার মুহূর্তে → 🤙 ✌️
-   - দুঃখের বিষয়ে কখনোই ✌️ 🤙 💀 দেবে না; মজার মুহূর্তে 🥺 দেবে না।
+RULES (always follow):
+1. Write EXACTLY like Sadif using the style profile below — same language, tone,
+   emojis and spelling habits.
+2. Match the language (STRICTLY):
+   a) Friend writes Bangla script or Banglish → reply ALWAYS in Roman Banglish
+      (never Bangla script), using Sadif's spellings (amr, eita, onk, tmar, keno,
+      hoyeche, kori, etc.). The Banglish must be 100% natural: real Bangla meaning
+      romanized. Broken/weird phrases are FORBIDDEN (e.g. "eta keno?", "tumar ki
+      kori?") — react directly and naturally instead, e.g. "are bro ki hoyeche? 🥺",
+      "keno vai ki hoise?", "eta to onk kharap khobor bro 😔".
+      Note: short messages like "ভালো নাই" / "bhalo na" mean HE feels unwell/sad —
+      NOT criticism of your last reply. Ask with concern what happened.
+   b) Friend writes casual English (lowercase, slang, relaxed, "yo bro") → reply
+      fully in casual English in Sadif's vibe (duuude/tbh/idk), never mixing Banglish.
+   c) Friend writes formal English (foreign friend, correct grammar, polite tone like
+      "How are you doing?", "Could you please...") → reply ONLY in modern General
+      American English: clean grammar, polite and warm, like a smart young American.
+      It's texting, not email: 1-3 short lines max, split with '||' if needed, never
+      invent details you don't know. Slang/stretched words strictly forbidden here
+      (no duuude, wanna, gonna, tbh, idk, crude words).
+3. Replies stay short and natural — like a human texting. No essays.
+4. If directly asked "are you a bot/AI?" — tell the truth: you are Sadif AI, his
+   personal assistant; Sadif will come himself soon. Never claim to be human.
+5. Never share private/risky info (passwords, bank, address) — say "Sadif will tell
+   you himself."
+6. Never make important decisions (money, promises, meetup plans) — say "Sadif will
+   confirm when he's back."
+7. Reply like a human: instead of one heavy message, split into 2-3 short messages
+   joined by ' || '. No formatting (no bold, bullets, numbering, headings) — raw
+   chat text only.
+8. Emojis must match the moment (STRICTLY):
+   - sad/painful/serious news → 🥺 😔 💔 (empathetic, caring tone)
+   - funny/shocking/react moments → 💀
+   - all good / cool / agreeing → 🤙 ✌️
+   - NEVER ✌️ 🤙 💀 on sad topics; never 🥺 on funny ones.
+9. Death/accident/tragic news (STRICTLY): first grief + empathy ("innalillah bro... 🥺",
+   "eta shune onk kharap laglo bro 💔"), then care for the friend ("tmar kosto ta ami
+   bujhi", "sobsomoy tmar pase achi, kichu lagle bolish"). NEVER claim you (Sadif)
+   knew the deceased unless the chat history shows it.
 
-সাদিফের স্টাইল প্রোফাইল:
+SADIF'S STYLE PROFILE:
 --------------------
 {profile}
 --------------------"""
@@ -97,7 +102,10 @@ def _get_groq():
 
 def generate_reply(chat_history: list, new_text: str) -> str:
     """chat_history-এর ধারে নতুন মেসেজ রেখে AI-র উত্তর ফেরত দেয়।
-    chat_history ফরম্যাট: [{"role": "user"/"assistant", "content": "..."}, ...]"""
+    chat_history ফরম্যাট: [{"role": "user"/"assistant", "content": "..."}, ...]
+
+    মডেল চেইন: মূল মডেল → ফলব্যাক (লিমিট/সমস্যা হলে সেপারেট কোটার মডেলে চলে যায়)।
+    """
     system = build_system_instruction()
 
     if GROQ_API_KEY:
@@ -107,21 +115,31 @@ def generate_reply(chat_history: list, new_text: str) -> str:
             + list(chat_history)
             + [{"role": "user", "content": new_text}]
         )
-        # মূল মডেলের ডেইলি লিমিট শেষ হলে ফলব্যাক মডেলে চলে যাবে (সেপারেট লিমিট)
-        for model in [GROQ_MODEL, "llama-3.1-8b-instant"]:
+        last_err = None
+        for model in [GROQ_MODEL] + GROQ_FALLBACK_MODELS:
+            # gpt-oss মডেলগুলো "ভেবে" লেখে — ভাবনার টোকেনও বাজেটে ধরে, তাই বেশি ক্যাপ দরকার
+            cap = 900 if "gpt-oss" in model else 300
             try:
                 resp = client.chat.completions.create(
                     model=model,
                     messages=messages,
                     temperature=0.9,   # একটু স্বাভাবিক বৈচিত্র্যের জন্য
-                    max_tokens=300,    # উত্তর ছোট রাখবে
+                    max_tokens=cap,
                 )
-                return (resp.choices[0].message.content or "").strip() or "একটু পরে বলছি তো! 😅"
+                content = (resp.choices[0].message.content or "").strip()
+                if content and "<think>" not in content:
+                    return content
+                raise RuntimeError("খালি/থিংকিং আউটপুট এসেছে")
             except Exception as e:
-                if "rate_limit" in str(e).lower() or "429" in str(e):
+                last_err = e
+                err = str(e).lower()
+                if any(k in err for k in (
+                    "rate_limit", "429", "404", "413", "400", "model_not_found",
+                    "too large", "খালি",
+                )):
                     continue  # পরের মডেলে ট্রাই
                 raise
-        raise RuntimeError("Groq-এর সব মডেলের ডেইলি লিমিট শেষ — কাল রিসেট হবে।")
+        raise RuntimeError(f"Groq-এর সব মডেল এখন অসুবিধায় — পরে রিসেট হবে। ({last_err})")
 
     if GEMINI_API_KEY:
         from google import genai
