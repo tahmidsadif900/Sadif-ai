@@ -11,10 +11,27 @@ userbot.py ও bot.py — দুটোই এটা ব্যবহার কর
 
 import os
 import re
+from collections import deque
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# 🧠 লাইভ স্টাইল মেমোরি: সাদিফ নিজে যা যা লিখছে (userbot তার পাঠানো মেসেজ এখানে ঢোকায়),
+# শেষগুলো প্রতি রিপ্লাইয়ে স্টাইল-রেফারেন্স হিসেবে যায়
+_live_owner_samples: deque = deque(maxlen=40)
+
+
+def add_owner_sample(text: str) -> None:
+    """সাদিফের নিজের হাতে লেখা মেসেজ লাইভ স্টাইল মেমোরিতে রাখা হবে।"""
+    text = (text or "").strip()
+    if text and len(text) <= 300:
+        _live_owner_samples.append(text)
+
+
+def _get_live_samples(limit: int = 10) -> str:
+    items = list(_live_owner_samples)[-limit:]
+    return "\n".join(f'- "{t}"' for t in items)
 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
@@ -36,6 +53,13 @@ def load_style_profile() -> str:
 
 def build_system_instruction() -> str:
     profile = load_style_profile()
+    samples = _get_live_samples()
+    live_block = ""
+    if samples:
+        live_block = (
+            "\n\nSADIF'S LIVE OWN MESSAGES (his freshest real texts — imitate these above all):\n"
+            + samples
+        )
     return f"""You are "Sadif AI" — Sadif's personal AI assistant, replying on his behalf
 from his own Telegram account while he is busy or asleep.
 
@@ -106,11 +130,19 @@ RULES (always follow):
    deceased unless the chat history shows it.
 10. Never repeat a question you already asked in this conversation — keep moving the
     chat forward with new things (news, plans, reactions).
+11. LIVE STYLE MASTERY: at the end you'll see Sadif's most recent real own messages.
+    They are the FRESHEST expression of how he talks — absorb them 100% and let them
+    lead your style. As he writes more, your imitation of him only gets sharper.
+12. NEVER send a wrong, weird or off-topic reply. If the friend's message is unclear
+    or you are not sure what they mean, ask ONE short natural clarifying question in
+    their language (Bengali: "মানে ভাই? একটু খুলে বলিস 😅" / English: "wait wdym? 😅")
+    instead of guessing. Never invent facts about Sadif's life, plans or people.
 
 SADIF'S STYLE PROFILE:
 --------------------
 {profile}
---------------------"""
+--------------------
+{live_block}"""
 
 
 def has_provider() -> bool:

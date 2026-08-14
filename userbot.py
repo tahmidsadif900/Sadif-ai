@@ -70,7 +70,8 @@ async def remember_my_messages(event):
         if not text or text.startswith("!"):
             return  # কমান্ড বাদ
         histories[event.chat_id].append({"role": "assistant", "content": text})
-        logger.info("📝 আপনার নিজের মেসেজ স্মৃতিতে রাখা হলো (চ্যাট %s)", event.chat_id)
+        ai_engine.add_owner_sample(text)  # 🧠 লাইভ স্টাইল লার্নিং — নিজের লেখা বট শিখছে
+        logger.info("📝 আপনার নিজের মেসেজ স্মৃতি+স্টাইলে রাখা হলো (চ্যাট %s)", event.chat_id)
     except Exception:
         pass
 
