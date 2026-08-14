@@ -120,8 +120,8 @@ async def on_message(event):
     text = (event.raw_text or "").strip()
     photo_bytes = None
     if not text:
-        # 👁️ ছবি-অনলি মেসেজ: ভিশন চালু থাকলে ছবি দেখে উত্তর দেবে
-        if event.photo and ai_engine.GEMINI_API_KEY:
+        # 👁️ ছবি-অনলি মেসেজ: Groq Qwen-ভিশন দিয়ে ছবি দেখে উত্তর দেবে
+        if event.photo:
             try:
                 photo_bytes = await event.download_media(file=bytes)
             except Exception as e:
@@ -213,7 +213,7 @@ async def owner_commands(event):
     elif cmd == "status":
         state = "⏸️ থামা" if PAUSED else "▶️ চালু"
         provider = "Groq" if ai_engine.GROQ_API_KEY else "Gemini"
-        vision = "👁️ চালু" if ai_engine.GEMINI_API_KEY else "👁️ বন্ধ (GEMINI_API_KEY দিন)"
+        vision = "👁️ চালু (Groq Qwen-ভিশন)"
         await client.send_message(
             "me",
             f"🤖 সাদিফ AI: {state}\nব্রেইন: {provider}\nভিশন: {vision}\n"

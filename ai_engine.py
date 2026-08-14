@@ -340,13 +340,10 @@ def raw_complete(instruction: str, content: str, max_tokens: int = 600) -> str:
 
 def generate_image_reply(chat_history: list, image_bytes: bytes, caption: str = "",
                          mime: str = "image/jpeg") -> str:
-    """ছবি দেখে সাদিফের স্টাইলে রিপ্লাই (Gemini ভিশন দিয়ে)।"""
-    if not GEMINI_API_KEY:
-        raise RuntimeError("ছবি বোঝার জন্য GEMINI_API_KEY সেট করা নেই।")
-    from google import genai
-    from google.genai import types
+    """ছবি দেখে সাদিফের স্টাইলে রিপ্লাই — Groq Qwen-ভিশন (কোনো অতিরিক্ত চাবি লাগে না),
+    পড়ে থাকলে Gemini ব্যাকআপ।"""
+    import base64
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
     system = build_system_instruction() + time_truth_note()
     transcript = "\n".join(
         ("বন্ধু: " if m["role"] == "user" else "সাদিফ: ") + m["content"]
@@ -362,12 +359,47 @@ def generate_image_reply(chat_history: list, image_bytes: bytes, caption: str = 
         "ভাষার নিয়ম: বন্ধুর শেষ টেক্সট যে ভাষায় সেই ভাষায় (বাংলা/ব্যাংলিশ হলে বাংলা হরফে, "
         "ইংরেজি হলে ইংরেজি)। প্রয়োজনে ' || ' দিয়ে ২-৩ ভাগ করো।"
     )
-    resp = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=[
-            types.Part.from_bytes(data=image_bytes, mime_type=mime),
-            prompt,
-        ],
-        config={"system_instruction": system},
-    )
-    return (resp.text or "").strip() or "ভাই ছবিটা পেয়েছি 🤙 একটু পরে বলছি!"
+
+    # 🥇 Groq Qwen-ভিশন (তারই চাবি — ফ্রি)
+    if GROQ_API_KEY:
+        data_url = f"data:{mime};base64,{base64.b64encode(image_bytes).decode()}"
+        try:
+            resp = _get_groq().chat.completions.create(
+                model="qwen/qwen3.6-27b",
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": [
+                        {"type": "image_url", "image_url": {"url": data_url}},
+                        {"type": "text", "text": prompt},
+                    ]},
+                ],
+                temperature=0.9,
+                max_tokens=1500,  # ভাবনার জায়গা + উত্তর
+            )
+            out = (resp.choices[0].message.content or "").strip()
+            out = re.sub(r"<think>.*?</think>", "", out, flags=re.DOTALL).strip()
+            if "<think>" in out:
+                out = ""
+            if out:
+                return out
+        except Exception as e:
+            logger_note = str(e)[:200]
+
+    # 🥈 Gemini ব্যাকআপ (চাবি থাকলে)
+    if GEMINI_API_KEY:
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        resp = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[
+                types.Part.from_bytes(data=image_bytes, mime_type=mime),
+                prompt,
+            ],
+            config={"system_instruction": system},
+        )
+        out = (resp.text or "").strip()
+        if out:
+            return out
+
+    raise RuntimeError("ছবির রিপ্লাই এখন বানানো যাচ্ছে না।")
