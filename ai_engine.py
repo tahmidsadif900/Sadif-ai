@@ -12,10 +12,78 @@ userbot.py ও bot.py — দুটোই এটা ব্যবহার কর
 import os
 import re
 from collections import deque
+from datetime import datetime
 
 from dotenv import load_dotenv
 
+try:
+    from zoneinfo import ZoneInfo  # Python 3.9+
+except ImportError:
+    ZoneInfo = None
+
 load_dotenv()
+
+
+def now_dhaka() -> str:
+    """সাদিফের লোকাল সময় (ঢাকা) — টেক্সট আকারে।"""
+    try:
+        tz = ZoneInfo("Asia/Dhaka") if ZoneInfo else None
+        now = datetime.now(tz) if tz else datetime.now()
+        return now.strftime("%A, %d %b %Y, %I:%M %p (ঢাকার সময়)")
+    except Exception:
+        return datetime.now().strftime("%A, %d %b %Y, %I:%M %p")
+
+
+_BN_DAYS = ["সোমবার", "মঙ্গলবার", "বুধবার", "বৃহস্পতিবার", "শুক্রবার", "শনিবার", "রবিবার"]
+
+
+def now_dhaka_bangla() -> str:
+    """ঢাকার সময় বাংলায় — যেমন 'শুক্রবার, বিকেল ৫টা ২০ মিনিট'।"""
+    bn = str.maketrans("0123456789", "০১২৩৪৫৬৭৮৯")
+    try:
+        tz = ZoneInfo("Asia/Dhaka") if ZoneInfo else None
+        now = datetime.now(tz) if tz else datetime.now()
+    except Exception:
+        now = datetime.now()
+    h, m = now.hour, now.minute
+    if 4 <= h < 6:
+        period = "ভোর"
+    elif 6 <= h < 12:
+        period = "সকাল"
+    elif 12 <= h < 16:
+        period = "দুপুর"
+    elif 16 <= h < 18:
+        period = "বিকেল"
+    elif 18 <= h < 20:
+        period = "সন্ধ্যা"
+    else:
+        period = "রাত"
+    h12 = h % 12 or 12
+    clock = f"{h12}টা" if m == 0 else f"{h12}টা {m} মিনিট"
+    day = _BN_DAYS[now.weekday()]
+    return f"{day}, {period} {clock}".translate(bn)
+
+
+def now_dhaka_short_en() -> str:
+    """যেমন 'Fri, 5:22 PM' — ইংরেজি মোডে ইকো করার জন্য।"""
+    try:
+        tz = ZoneInfo("Asia/Dhaka") if ZoneInfo else None
+        now = datetime.now(tz) if tz else datetime.now()
+    except Exception:
+        now = datetime.now()
+    return now.strftime("%a") + " " + now.strftime("%I:%M %p").lstrip("0")
+
+
+def time_truth_note() -> str:
+    """প্রম্পটে যোগ হওয়া লাইভ-সময় নির্দেশনা।"""
+    bn = now_dhaka_bangla()
+    en = now_dhaka_short_en()
+    return (
+        f"\n\nREAL CURRENT TIME for Sadif (Asia/Dhaka): {now_dhaka()} | বাংলায়: \"{bn}\""
+        f" | English short: \"{en}\" — if anyone asks the time, date or day, answer THIS "
+        f"exact real info, casually like a human (Bengali: \"এখন {bn} বাজে ভাই\" / "
+        f"\"আজ {bn.split(', ')[0]} ভাই\"; English: \"it's {en} rn\"). Never guess."
+    )
 
 # 🧠 লাইভ স্টাইল মেমোরি: সাদিফ নিজে যা যা লিখছে (userbot তার পাঠানো মেসেজ এখানে ঢোকায়),
 # শেষগুলো প্রতি রিপ্লাইয়ে স্টাইল-রেফারেন্স হিসেবে যায়
@@ -169,7 +237,7 @@ def generate_reply(chat_history: list, new_text: str) -> str:
 
     মডেল চেইন: মূল মডেল → ফলব্যাক (লিমিট/সমস্যা হলে সেপারেট কোটার মডেলে চলে যায়)।
     """
-    system = build_system_instruction()
+    system = build_system_instruction() + time_truth_note()
 
     if GROQ_API_KEY:
         client = _get_groq()
@@ -236,3 +304,70 @@ def generate_reply(chat_history: list, new_text: str) -> str:
         return (resp.text or "").strip() or "একটু পরে বলছি তো! 😅"
 
     raise RuntimeError("কোনো AI কী সেট করা নেই — GROQ_API_KEY বা GEMINI_API_KEY দিন।")
+
+
+def raw_complete(instruction: str, content: str, max_tokens: int = 600) -> str:
+    """স্টাইল-মুক্ত এক-shot উত্তর (যেমন ডেইলি রিপোর্ট বানানোর জন্য)।"""
+    if not GROQ_API_KEY:
+        raise RuntimeError("GROQ_API_KEY লাগবে।")
+    client = _get_groq()
+    msgs = [
+        {"role": "system", "content": instruction},
+        {"role": "user", "content": content},
+    ]
+    last_err = None
+    for model in [GROQ_MODEL, "qwen/qwen3.6-27b", "openai/gpt-oss-20b"]:
+        try:
+            cap = 1500 if "qwen" in model else max_tokens
+            resp = client.chat.completions.create(
+                model=model, messages=msgs, temperature=0.7, max_tokens=cap
+            )
+            out = (resp.choices[0].message.content or "").strip()
+            out = re.sub(r"<think>.*?</think>", "", out, flags=re.DOTALL).strip()
+            if "<think>" in out:
+                out = ""
+            if out:
+                return out
+            raise RuntimeError("খালি আউটপুট")
+        except Exception as e:
+            last_err = e
+            err = str(e).lower()
+            if any(k in err for k in ("rate_limit", "429", "404", "413", "400", "too large", "খালি")):
+                continue
+            raise
+    raise RuntimeError(f"রিপোর্ট বানাতে ব্যর্থ: {last_err}")
+
+
+def generate_image_reply(chat_history: list, image_bytes: bytes, caption: str = "",
+                         mime: str = "image/jpeg") -> str:
+    """ছবি দেখে সাদিফের স্টাইলে রিপ্লাই (Gemini ভিশন দিয়ে)।"""
+    if not GEMINI_API_KEY:
+        raise RuntimeError("ছবি বোঝার জন্য GEMINI_API_KEY সেট করা নেই।")
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=GEMINI_API_KEY)
+    system = build_system_instruction() + time_truth_note()
+    transcript = "\n".join(
+        ("বন্ধু: " if m["role"] == "user" else "সাদিফ: ") + m["content"]
+        for m in list(chat_history)[-12:]
+    )
+    prompt = (
+        "বন্ধু একটি ছবি পাঠিয়েছে টেলিগ্রামে।\n"
+        f"ছবির ক্যাপশন: {caption or 'নেই'}\n"
+        f"আগের কথোপকথন:\n{transcript or 'নেই'}\n\n"
+        "ছবিটা মন দিয়ে দেখো — কী আছে, কী লেখা, কে/কী করছে — তারপর সাদিফের মতো "
+        "ছোট, প্রাকৃতিক, মানবিক রিঅ্যাকশন লেখো, যেন সত্যিকারের মানুষ ছবি দেখে রিপ্লাই করছে। "
+        "ছবির নির্দিষ্ট জিনিসের উল্লেখ করো (অস্পষ্ট জেনেরিক জবাব নয়)। "
+        "ভাষার নিয়ম: বন্ধুর শেষ টেক্সট যে ভাষায় সেই ভাষায় (বাংলা/ব্যাংলিশ হলে বাংলা হরফে, "
+        "ইংরেজি হলে ইংরেজি)। প্রয়োজনে ' || ' দিয়ে ২-৩ ভাগ করো।"
+    )
+    resp = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=[
+            types.Part.from_bytes(data=image_bytes, mime_type=mime),
+            prompt,
+        ],
+        config={"system_instruction": system},
+    )
+    return (resp.text or "").strip() or "ভাই ছবিটা পেয়েছি 🤙 একটু পরে বলছি!"
